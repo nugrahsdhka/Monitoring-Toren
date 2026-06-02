@@ -1,424 +1,64 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Monitoring Toren</title>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-    :root {
-      --bg:        #0c0e12;
-      --surface:   #13161c;
-      --surface2:  #1a1e27;
-      --border:    #ffffff12;
-      --border2:   #ffffff20;
-      --text:      #e8eaf0;
-      --muted:     #5a6070;
-      --subtle:    #2e3340;
-      --green:     #34d399;
-      --green-dim: #34d39918;
-      --red:       #f87171;
-      --red-dim:   #f8717118;
-      --blue:      #60a5fa;
-    }
-
-    body {
-      font-family: 'DM Sans', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      padding: 32px 24px;
-      max-width: 480px;
-      margin: 0 auto;
-    }
-
-    /* ── Header ── */
-    header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      margin-bottom: 28px;
-    }
-    .header-title {
-      font-size: 11px;
-      font-weight: 400;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 4px;
-    }
-    .header-name {
-      font-size: 22px;
-      font-weight: 500;
-      color: var(--text);
-      letter-spacing: -0.02em;
-    }
-
-    .conn-pill {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      font-family: 'DM Mono', monospace;
-      padding: 6px 12px;
-      border-radius: 999px;
-      border: 1px solid var(--border2);
-      background: var(--surface);
-      color: var(--muted);
-      transition: all 0.4s ease;
-      white-space: nowrap;
-    }
-    .conn-pill.ok  { border-color: var(--green); color: var(--green); background: var(--green-dim); }
-    .conn-pill.err { border-color: var(--red);   color: var(--red);   background: var(--red-dim);   }
-    .dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: currentColor;
-      animation: none;
-    }
-    .conn-pill.ok .dot { animation: pulse 2s ease infinite; }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.35; }
-    }
-
-    /* ── Hero status card ── */
-    .hero {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 28px;
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      transition: border-color 0.5s ease, box-shadow 0.5s ease;
-      position: relative;
-      overflow: hidden;
-    }
-    .hero::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      transition: opacity 0.5s ease;
-      pointer-events: none;
-    }
-    .hero.ok   { border-color: #34d39930; }
-    .hero.ok::before   { background: radial-gradient(ellipse at 20% 50%, #34d39908 0%, transparent 60%); opacity: 1; }
-    .hero.warn { border-color: #f8717130; }
-    .hero.warn::before { background: radial-gradient(ellipse at 20% 50%, #f8717108 0%, transparent 60%); opacity: 1; }
-
-    .hero-icon-wrap {
-      width: 64px; height: 64px;
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      background: var(--surface2);
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-      transition: all 0.4s ease;
-    }
-    .hero.ok   .hero-icon-wrap { border-color: #34d39940; background: #34d39910; }
-    .hero.warn .hero-icon-wrap { border-color: #f8717140; background: #f8717110; }
-
-    .hero-svg { width: 30px; height: 30px; transition: all 0.4s; }
-    .hero.ok   .hero-svg { color: var(--green); }
-    .hero.warn .hero-svg { color: var(--red); }
-    .hero-svg-default { color: var(--muted); }
-
-    .hero-body { flex: 1; }
-    .hero-eyebrow { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; font-family: 'DM Mono', monospace; }
-    .hero-status {
-      font-size: 24px; font-weight: 500; letter-spacing: -0.02em;
-      color: var(--text);
-      transition: color 0.4s;
-    }
-    .hero.ok   .hero-status { color: var(--green); }
-    .hero.warn .hero-status { color: var(--red); }
-    .hero-time { font-size: 11px; color: var(--muted); margin-top: 5px; font-family: 'DM Mono', monospace; }
-
-    /* ── Metrics grid ── */
-    .metrics {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-    .metric {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 16px 14px;
-    }
-    .metric-val {
-      font-size: 24px; font-weight: 500;
-      color: var(--text);
-      letter-spacing: -0.02em;
-      font-family: 'DM Mono', monospace;
-      line-height: 1;
-      margin-bottom: 6px;
-    }
-    .metric-label { font-size: 10px; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
-
-    /* ── Level bar ── */
-    .level-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 20px 22px;
-      margin-bottom: 14px;
-    }
-    .level-header {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 14px;
-    }
-    .level-title { font-size: 12px; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
-    .level-num {
-      font-size: 14px; font-weight: 500;
-      font-family: 'DM Mono', monospace;
-      color: var(--text);
-    }
-    .track {
-      height: 6px;
-      background: var(--subtle);
-      border-radius: 999px;
-      overflow: hidden;
-    }
-    .fill {
-      height: 100%; border-radius: 999px;
-      background: var(--green);
-      width: 0%;
-      transition: width 1s cubic-bezier(0.4,0,0.2,1), background 0.5s ease;
-    }
-    .fill.high { background: var(--red); }
-
-    /* ── Activity log ── */
-    .log-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 20px 22px;
-    }
-    .log-head {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 14px;
-    }
-    .log-heading { font-size: 12px; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
-    .log-count {
-      font-size: 10px; font-family: 'DM Mono', monospace;
-      color: var(--muted);
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      padding: 2px 8px;
-    }
-    .log-list {
-      display: flex; flex-direction: column; gap: 6px;
-      max-height: 200px; overflow-y: auto;
-    }
-    .log-list::-webkit-scrollbar { width: 3px; }
-    .log-list::-webkit-scrollbar-track { background: transparent; }
-    .log-list::-webkit-scrollbar-thumb { background: var(--subtle); border-radius: 999px; }
-
-    .log-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 8px 12px;
-      border-radius: 10px;
-      background: var(--surface2);
-      animation: fadeIn 0.3s ease;
-    }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-    .log-dot {
-      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-    }
-    .log-item.ok   .log-dot { background: var(--green); }
-    .log-item.warn .log-dot { background: var(--red); }
-    .log-msg {
-      flex: 1; font-size: 12px; color: var(--text);
-    }
-    .log-ts {
-      font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); flex-shrink: 0;
-    }
-    .log-empty { font-size: 12px; color: var(--muted); padding: 4px 0; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Tank Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        .glass { background: rgba(16, 185, 129, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(16, 185, 129, 0.2); }
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
 </head>
-<body>
+<body class="bg-slate-950 text-emerald-50 min-h-screen p-4 md:p-8">
 
-  <header>
-    <div>
-      <div class="header-title">IoT Dashboard</div>
-      <div class="header-name">Monitoring Toren</div>
+    <div class="max-w-4xl mx-auto">
+        <header class="mb-8 flex justify-between items-end">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight">Tank Monitoring</h1>
+                <p class="text-emerald-500/60">Sistem Monitoring Tangki Air IoT</p>
+            </div>
+            <div id="status-badge" class="px-3 py-1 rounded-full text-xs font-mono bg-slate-900 border border-slate-700 text-slate-400">
+                Menghubungkan...
+            </div>
+        </header>
+
+        <div class="grid md:grid-cols-3 gap-4 mb-8">
+            <div class="md:col-span-2 glass p-6 rounded-3xl flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-emerald-500/60 uppercase tracking-widest font-semibold">Status Tangki</p>
+                    <h2 id="status-tangki" class="text-4xl font-bold mt-1 text-emerald-400">-</h2>
+                </div>
+                <div id="level-circle" class="w-20 h-20 rounded-full border-4 border-emerald-500/20 flex items-center justify-center font-bold text-xl">
+                    <span id="level-persen">0%</span>
+                </div>
+            </div>
+            <div class="glass p-6 rounded-3xl">
+                <p class="text-sm text-emerald-500/60 uppercase tracking-widest font-semibold">Jarak Sensor</p>
+                <h2 id="jarak-air" class="text-3xl font-bold mt-2 font-mono">0 cm</h2>
+            </div>
+        </div>
+
+        <div class="glass rounded-3xl p-6">
+            <h3 class="text-lg font-semibold mb-4">Riwayat Aktivitas</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="text-emerald-500/40 uppercase text-xs">
+                        <tr>
+                            <th class="pb-3">Waktu</th>
+                            <th class="pb-3">Status</th>
+                            <th class="pb-3">Level</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-table" class="divide-y divide-emerald-500/10">
+                        </tbody>
+                </table>
+            </div>
+        </div>
     </div>
-    <div class="conn-pill" id="connPill">
-      <span class="dot"></span>
-      <span id="connLabel">Connecting...</span>
-    </div>
-  </header>
 
-  <div class="hero" id="hero">
-    <div class="hero-icon-wrap" id="heroIconWrap">
-      <svg class="hero-svg hero-svg-default" id="heroSvg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path id="heroPath" stroke-linecap="round" stroke-linejoin="round"
-          d="M12 6v6l4 2M12 2a10 10 0 100 20A10 10 0 0012 2z"/>
-      </svg>
-    </div>
-    <div class="hero-body">
-      <div class="hero-eyebrow">Status toren</div>
-      <div class="hero-status" id="heroStatus">Menunggu data...</div>
-      <div class="hero-time" id="heroTime">— belum ada pembaruan</div>
-    </div>
-  </div>
-
-  <div class="metrics">
-    <div class="metric">
-      <div class="metric-val" id="mTotal">0</div>
-      <div class="metric-label">Pesan</div>
-    </div>
-    <div class="metric">
-      <div class="metric-val" id="mOver">0</div>
-      <div class="metric-label">Overload</div>
-    </div>
-    <div class="metric">
-      <div class="metric-val" id="mUp">0:00</div>
-      <div class="metric-label">Uptime</div>
-    </div>
-  </div>
-
-  <div class="level-card">
-    <div class="level-header">
-      <span class="level-title">Kapasitas toren</span>
-      <span class="level-num" id="levelNum">—</span>
-    </div>
-    <div class="track"><div class="fill" id="fill"></div></div>
-  </div>
-
-  <div class="log-card">
-    <div class="log-head">
-      <span class="log-heading">Riwayat aktivitas</span>
-      <span class="log-count" id="logCount">0 entri</span>
-    </div>
-    <div class="log-list" id="logList">
-      <div class="log-empty">Belum ada data masuk.</div>
-    </div>
-  </div>
-
-  <script>
-    // ===== KONFIGURASI MQTT =====
-    const MQTT_HOST  = "wss://b991b24530db4275a23f9fa3f4fe29f6.s1.eu.hivemq.cloud:8884/mqtt";
-    const MQTT_USER  = "TugasBesarAndesis12";
-    const MQTT_PASS  = "TugasBesarAndesis12";
-    const MQTT_TOPIC = "sensor/hujan";
-    // ============================
-
-    let totalMsg = 0, overCount = 0, logEntries = 0;
-    const startTime = Date.now();
-    let lastStateIsOver = null; // Variabel baru untuk melacak status terakhir
-
-    // Uptime counter
-    setInterval(() => {
-      const s = Math.floor((Date.now() - startTime) / 1000);
-      const m = Math.floor(s / 60), sec = s % 60;
-      document.getElementById('mUp').textContent = m + ':' + String(sec).padStart(2, '0');
-    }, 1000);
-
-    function setConn(ok) {
-      const pill = document.getElementById('connPill');
-      const lbl  = document.getElementById('connLabel');
-      pill.className = 'conn-pill ' + (ok ? 'ok' : 'err');
-      lbl.textContent = ok ? 'Connected' : 'Disconnected';
-    }
-
-    function updateHero(isOver, statusText) {
-      const hero   = document.getElementById('hero');
-      const status = document.getElementById('heroStatus');
-      const time   = document.getElementById('heroTime');
-      const svg    = document.getElementById('heroSvg');
-      const path   = document.getElementById('heroPath');
-
-      hero.className   = 'hero ' + (isOver ? 'warn' : 'ok');
-      status.textContent = statusText;
-      time.textContent   = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      svg.classList.remove('hero-svg-default');
-
-      if (isOver) {
-        // Alert triangle path
-        path.setAttribute('d', 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z');
-      } else {
-        // Droplet path
-        path.setAttribute('d', 'M12 2.25c0 0-7.5 8.25-7.5 12a7.5 7.5 0 0015 0c0-3.75-7.5-12-7.5-12z');
-      }
-    }
-
-    function updateLevel(isOver) {
-      const fill  = document.getElementById('fill');
-      const num   = document.getElementById('levelNum');
-      const pct   = isOver
-        ? Math.round(90 + Math.random() * 10)
-        : Math.round(25 + Math.random() * 50);
-      fill.style.width = pct + '%';
-      fill.className = 'fill' + (isOver ? ' high' : '');
-      num.textContent = pct + '%';
-    }
-
-    function pushLog(isOver, msg) {
-      const list = document.getElementById('logList');
-      const empty = list.querySelector('.log-empty');
-      if (empty) empty.remove();
-
-      logEntries++;
-      document.getElementById('logCount').textContent = logEntries + ' entri';
-
-      const item = document.createElement('div');
-      item.className = 'log-item ' + (isOver ? 'warn' : 'ok');
-      item.innerHTML =
-        `<span class="log-dot"></span>` +
-        `<span class="log-msg">${msg}</span>` +
-        `<span class="log-ts">${new Date().toLocaleTimeString('id-ID')}</span>`;
-      list.prepend(item);
-      while (list.children.length > 30) list.removeChild(list.lastChild);
-    }
-
-    // MQTT
-    const client = mqtt.connect(MQTT_HOST, { username: MQTT_USER, password: MQTT_PASS });
-
-    client.on('connect', () => {
-      setConn(true);
-      client.subscribe(MQTT_TOPIC);
-    });
-
-    client.on('disconnect', () => setConn(false));
-    client.on('error', ()    => setConn(false));
-    client.on('offline', ()  => setConn(false));
-
-    client.on('message', (topic, message) => {
-      let data;
-      try { data = JSON.parse(message.toString()); } catch { return; }
-
-      totalMsg++;
-      document.getElementById('mTotal').textContent = totalMsg;
-
-      const isOver = !!data.isRaining;
-
-      updateHero(isOver, isOver ? 'Toren overload' : 'Toren optimal');
-      updateLevel(isOver);
-
-      // LOGIKA ANTI-SPAM
-      if (isOver !== lastStateIsOver) {
-        if (isOver) {
-          overCount++;
-          document.getElementById('mOver').textContent = overCount;
-        }
-
-        // Tampilkan log hanya jika status berubah
-        pushLog(isOver, data.status || (isOver ? 'Toren terdeteksi overload' : 'Toren dalam kondisi normal'));
-        
-        // Simpan status terbaru ke variabel
-        lastStateIsOver = isOver;
-      }
-    });
-  </script>
+    <script src="script.js"></script>
 </body>
 </html>

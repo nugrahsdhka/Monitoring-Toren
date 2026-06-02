@@ -3,29 +3,30 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
-// ===== KONFIGURASI — ISI SESUAI MILIKMU =====
-const char* WIFI_SSID     = "dydx";
+// ===== KONFIGURASI WIFI & MQTT =====
+const char* WIFI_SSID  = "dydx";
 const char* WIFI_PASSWORD = "kalkulusParsial";
 
-const char* MQTT_HOST     = "b991b24530db4275a23f9fa3f4fe29f6.s1.eu.hivemq.cloud"; // dari HiveMQ
-const int   MQTT_PORT     = 8883;
-const char* MQTT_USER     = "TugasBesarAndesis12";
-const char* MQTT_PASS     = "TugasBesarAndesis12";
-const char* MQTT_TOPIC    = "sensor/hujan";
-// ================================================
+const char* MQTT_HOST  = "b991b24530db4275a23f9fa3f4fe29f6.s1.eu.hivemq.cloud";
+const int   MQTT_PORT  = 8883;
+const char* MQTT_USER  = "TugasBesarAndesis12";
+const char* MQTT_PASS  = "TugasBesarAndesis12";
+const char* MQTT_TOPIC = "sensor/tangki";
+// ====================================
 
-#define RAIN_SENSOR_PIN 23
+#define TRIG_PIN 5
+#define ECHO_PIN 4
+
 #define GREEN_LED 21
 #define RED_LED   22
-#define BUZZER    2
+#define BUZZER    23
+#define TINGGI_TOREN 12.0
+
+
+String statusSebelumnya = "";
 
 WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
-
-// === VARIABEL UNTUK ANTI-SPAM ===
-bool lastRainingState = false; 
-bool firstRun = true; 
-// ================================
 
 void connectWiFi() {
   Serial.print("Menghubungkan WiFi");
@@ -38,7 +39,7 @@ void connectWiFi() {
 }
 
 void connectMQTT() {
-  espClient.setInsecure(); // untuk testing; ganti dengan sertifikat untuk produksi
+  espClient.setInsecure();
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
 
   while (!mqttClient.connected()) {
@@ -54,47 +55,93 @@ void connectMQTT() {
   }
 }
 
+float bacaJarak() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long durasi = pulseIn(ECHO_PIN, HIGH);
+  float jarak = durasi * 0.034 / 2;
+  return jarak;
+}
+
 void setup() {
-  pinMode(RAIN_SENSOR_PIN, INPUT_PULLUP);
-  pinMode(GREEN_LED, OUTPUT);
+  Serial.begin(115200);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
   pinMode(RED_LED, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
   pinMode(BUZZER, OUTPUT);
 
-  Serial.begin(115200);
   connectWiFi();
   connectMQTT();
+
+  Serial.println("=== SISTEM MONITORING TANGKI AIR ===");
 }
 
 void loop() {
   if (!mqttClient.connected()) connectMQTT();
   mqttClient.loop();
 
-  int rainDetected = digitalRead(RAIN_SENSOR_PIN);
-  bool isRaining = (rainDetected == LOW);
+  float jarak = bacaJarak();
+  if (jarak > TINGGI_TOREN) jarak = TINGGI_TOREN;
+  if (jarak < 0) jarak = 0;
 
-  // Kontrol hardware seperti sebelumnya, responsif realtime
-  digitalWrite(GREEN_LED, isRaining ? LOW  : HIGH);
-  digitalWrite(RED_LED,   isRaining ? HIGH : LOW);
-  digitalWrite(BUZZER,    isRaining ? HIGH : LOW);
+  int persen = ((TINGGI_TOREN - jarak) / TINGGI_TOREN) * 100;
+  persen = constrain(persen, 0, 100);
 
-  // LOGIKA ANTI-SPAM: Cek apakah status berubah
-  if (isRaining != lastRainingState || firstRun) {
-    // Kirim data ke MQTT sebagai JSON
+  String status;
+
+  if (persen <= 20) {
+    status = "KOSONG";
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BUZZER, HIGH);
+  }
+  else if (persen <= 50) {
+    status = "SEDIKIT AIR";
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BUZZER, HIGH);
+  }
+  else if (persen <= 80) {
+    status = "SUDAH TERISI";
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(BUZZER, LOW);
+  }
+  else {
+    status = "PENUH";
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(BUZZER, LOW);
+  }
+
+  if (status != statusSebelumnya) {
+
+    Serial.println();
+    Serial.println("==============================");
+    Serial.print("Status Tangki : "); Serial.println(status);
+    Serial.print("Level Air     : "); Serial.print(persen); Serial.println("%");
+    Serial.print("Jarak Air     : "); Serial.print(jarak); Serial.println(" cm");
+
     StaticJsonDocument<128> doc;
-    doc["status"]    = isRaining ? "OVERLOAD" : "OPTIMAL";
-    doc["isRaining"] = isRaining;
+    doc["status"] = status;
+    doc["level"]  = persen;
+    doc["jarak"]  = jarak;
     doc["timestamp"] = millis();
 
     char payload[128];
     serializeJson(doc, payload);
 
     mqttClient.publish(MQTT_TOPIC, payload);
-    Serial.println("Terkirim: " + String(payload));
+    Serial.println("Terkirim ke MQTT: " + String(payload));
 
-    // Perbarui status terakhir
-    lastRainingState = isRaining;
-    firstRun = false;
+    statusSebelumnya = status;
   }
 
-  delay(50);
+  delay(1000);
 }
