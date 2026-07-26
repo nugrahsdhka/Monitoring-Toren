@@ -1,4 +1,4 @@
-// Konfigurasi HiveMQ (Pastikan menggunakan URL WebSocket)
+// Konfigurasi HiveMQ
 const host = "wss://b991b24530db4275a23f9fa3f4fe29f6.s1.eu.hivemq.cloud:8884/mqtt";
 const client = mqtt.connect(host, {
     username: "TugasBesarAndesis12",
@@ -24,7 +24,7 @@ const levelChart = new Chart(ctx, {
     options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } } }
 });
 
-let lastData = null; // Menyimpan data terakhir
+let lastData = null;
 
 client.on('connect', () => {
     document.getElementById('status-badge').textContent = "Connected";
@@ -34,15 +34,13 @@ client.on('connect', () => {
 
 client.on('message', (topic, message) => {
     const data = JSON.parse(message.toString());
-    lastData = data; // <--- INI YANG KURANG: Simpan data agar setInterval bisa pakai
+    lastData = data; 
     const now = new Date().toLocaleTimeString();
 
-    // Update UI
     document.getElementById('status-tangki').textContent = data.status;
     document.getElementById('level-persen').textContent = data.level + "%";
     document.getElementById('jarak-air').textContent = data.jarak + " cm";
 
-    // TAMBAHKAN INI: Update grafik saat data benar-benar datang
     if (levelChart.data.labels.length > 20) {
         levelChart.data.labels.shift();
         levelChart.data.datasets[0].data.shift();
@@ -51,7 +49,6 @@ client.on('message', (topic, message) => {
     levelChart.data.datasets[0].data.push(parseInt(data.level));
     levelChart.update();
 
-    // Insert to Log
     const row = `
         <tr class="fade-in">
             <td class="py-3 font-mono text-emerald-500/60">${now}</td>
@@ -64,8 +61,6 @@ client.on('message', (topic, message) => {
 
 setInterval(() => {
     if (lastData) {
-        // Jika status tidak berubah, tetap dorong data yang sama ke chart
-        // agar grafik tidak terlihat mati
         const now = new Date().toLocaleTimeString();
         
         if (levelChart.data.labels.length > 20) {
